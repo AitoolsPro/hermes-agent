@@ -22,7 +22,7 @@
 
 3. pytest
    - 命令：`/opt/homebrew/bin/python3.11 -m pytest -o addopts='' tests/hermes_cli/test_safe_refactor_audit.py`
-   - 结果：`4 passed`
+   - 结果：`9 passed`
 
 4. 自愈循环
    - Attempt 1：投喂伪造 TTY 降级 diff，裁决 `REJECT_HARD`。
