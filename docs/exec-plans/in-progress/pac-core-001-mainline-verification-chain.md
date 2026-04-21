@@ -17,10 +17,10 @@
 - 目标 1：通过 —— `git log --graph --decorate --max-count=6` 与 `git merge-base main HEAD` 显示当前候选直接基于 `main=816e3e3774e1162e73220fd5fb2796524757bb5d`，已脱离 `fix-custom-providers-multi-models` 前置祖先污染。
 - 目标 2：通过 —— M5 文档已修正为 `9 passed`；pytest 实测 `9 passed`；测试文件回读可见 9 个测试；核心代码与文档都明确包含 `parse_valid` fail-closed、override scope consistency 与 TTY 降级拦截口径。
 - 目标 3：通过 —— 文件范围审查确认当前工作树仅含 PAC 合法文件；代码与文档一致性审查通过；pytest 复验通过；Git 收编边界审查确认未混入 `cli.py`、`hermes_cli/model_switch.py`。
-- 目标 4：通过 —— 根据前 3 项结果，已满足协议中的放行条件，可执行仅含 PAC 合法文件的 Git 收编动作。
+- 目标 4：通过 —— 根据前 3 项结果，已执行仅含 PAC 合法文件的 Git 收编动作，并将 `264aab0d feat: PAC-CORE-001 mainline integration` 推送到 `origin/main`。
 
 **Release / Handoff Gate (放行 / 接管闸门)**
 - 当前判断：可收口
-- 当前缺口：仅剩正式 Git 收编动作尚未执行。
-- 接手后第一步：按协议仅对 PAC 合法文件执行 `git add`、`git commit`、`git push origin main`。
-- 接手入口：先看 `docs/agents/mainline-integration-protocol.md`、本轮 Task Contract、Verification Chain 与当前 Git 状态。
+- 当前缺口：无。
+- 接手后第一步：如需复核，先检查 `origin/main` 是否停在 `264aab0dc22320f59745da0ed234119e6c5c9252`。
+- 接手入口：先看 `docs/agents/mainline-integration-protocol.md`、本轮 Task Contract、Verification Chain 与 `git show --stat --summary 264aab0d`。
