@@ -1,0 +1,56 @@
+version: 1
+policy_id: hermes.safe_refactor.core
+summary: Canonical hard-guard rules for uninstall-safe refactors.
+restricted_globs:
+  - hermes_cli/main.py
+  - hermes_cli/uninstall.py
+allowed_direct_related_paths:
+  - policies/core_rules.yaml
+  - hermes_cli/safe_refactor_audit.py
+  - tests/hermes_cli/test_safe_refactor_audit.py
+hard_reject_rules:
+  - id: uninstall.tty_guard_removed
+    severity: REJECT_HARD
+    file_globs:
+      - hermes_cli/main.py
+    removed_line_regex:
+      - '_require_tty\("uninstall"\)'
+      - 'sys\.stdin\.isatty\('
+    message: Do not remove or weaken the uninstall TTY guard.
+  - id: uninstall.confirm_removed
+    severity: REJECT_HARD
+    file_globs:
+      - hermes_cli/uninstall.py
+    removed_line_regex:
+      - 'Select option \[1/2/3\]'
+      - 'Type .+yes.+to confirm'
+      - 'if confirm != "yes"'
+    message: Do not remove uninstall confirmation prompts.
+  - id: uninstall.path_cleanup_removed
+    severity: REJECT_HARD
+    file_globs:
+      - hermes_cli/uninstall.py
+    removed_line_regex:
+      - 'def find_shell_configs'
+      - 'def remove_path_from_shell_configs'
+      - 'Removing PATH entries from shell configs'
+      - 'remove_path_from_shell_configs\('
+    message: Do not remove PATH cleanup protections from uninstall.
+  - id: uninstall.shell_service_removed
+    severity: REJECT_HARD
+    file_globs:
+      - hermes_cli/uninstall.py
+    removed_line_regex:
+      - 'subprocess\.run\('
+      - 'systemctl'
+      - 'daemon-reload'
+    message: Do not silently downgrade gateway service shell cleanup coverage.
+  - id: uninstall.delete_range_removed
+    severity: REJECT_HARD
+    file_globs:
+      - hermes_cli/uninstall.py
+    removed_line_regex:
+      - 'wrapper\.unlink\('
+      - 'service_file\.unlink\('
+      - 'shutil\.rmtree\('
+    message: Do not change uninstall deletion range guards without explicit review.
