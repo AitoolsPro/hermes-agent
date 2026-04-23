@@ -29,15 +29,18 @@ class HumanGateController:
     def require_explicit_approval(self, review_result: AutomatedReviewResult) -> HumanGateDecision:
         prompt_text = build_approval_request(review_result)
         self._output_fn(prompt_text)
-        response = self._input_fn("Approve deployment? [Y/Confirm]: ").strip()
+        response = self._input_fn("北冥是否批准进入下一步？[Y/Confirm]: ").strip()
         approved = response.lower() in _APPROVAL_TOKENS
         return HumanGateDecision(approved=approved, response=response, prompt_text=prompt_text)
 
 
 def build_approval_request(review_result: AutomatedReviewResult) -> str:
+    first_reason = review_result.reasons[0] if review_result.reasons else "无"
     return (
-        f"M6 gate: {review_result.verdict} | "
-        f"m3={'REJECT_HARD' if review_result.audit_report.rejected else 'PASS'} | "
-        f"pytest_exit={review_result.pytest.exit_code} | "
-        f"reason={review_result.reasons[0] if review_result.reasons else 'none'}"
+        "《北冥裁决请示书》\n"
+        f"- 当前裁决: {review_result.verdict}\n"
+        f"- M3 审计: {'REJECT_HARD' if review_result.audit_report.rejected else 'PASS'}\n"
+        f"- pytest: exit={review_result.pytest.exit_code}\n"
+        f"- 主结论: {first_reason}\n"
+        "- 请求: 若认可，请输入 Y 或 Confirm；否则保持停机。"
     )

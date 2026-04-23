@@ -16,9 +16,11 @@
 ## 架构级升维战役
 
 ### AR-1：`safe-refactor-loop` 自动化防爆重构 Skill / 调度器
-- **状态**：最高优先级活跃战役（阶段结案：工程化接线收口已完成，见 `docs/exec-plans/completed/ar-1-engineering-wiring-acceptance-report.md`）
-- **目标**：把已入主线的 M3 核心继续接成可执行状态机，完成 M5 自动读写战时文档、归档同步器、以及 M5→M6 的一键启动真实流水线。
-- **当前重点**：工程化接线收口已完成；下一阶段转入 M4 / M1 / M2 / M7 的持续工程化。
+- **状态**：最高优先级活跃战役（第一刀已落地；第二刀为当前可自动接管子阶段）
+- **自动接管入口**：`docs/exec-plans/in-progress/ar-1-engineering-wiring-task-contract.md`
+- **目标**：把已入主线的 M3 核心继续接成可执行状态机。
+- **当前重点**：AR-1 第二刀：建立“从账本接管战役并自动串起 M3 -> M5 -> M6”的一键启动总控链；第三刀归档同步器继续后置，不在本轮吸入。
+- **参考历史验收**：`docs/exec-plans/completed/ar-1-engineering-wiring-acceptance-report.md` 仅作为已完成历史输入，不得直接当作第二刀当前完成证明。
 
 ## P1
 

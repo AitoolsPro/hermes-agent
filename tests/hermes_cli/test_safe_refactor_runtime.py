@@ -1,10 +1,17 @@
 from pathlib import Path
 
 from hermes_cli.human_gate_controller import HumanGateDecision
-from hermes_cli.review_orchestrator import AutomatedReviewResult, CallChainAnalysis, PytestExecution
-from hermes_cli.safe_refactor_audit import AuditReport
+from hermes_cli.review_orchestrator import (
+    AutomatedReviewResult,
+    CallChainAnalysis,
+    PytestExecution,
+    ReviewAttempt,
+    SelfCorrectionReviewResult,
+)
+from hermes_cli.safe_refactor_audit import AuditFinding, AuditReport
 from hermes_cli.safe_refactor_runtime import (
     BattleDocumentPaths,
+    discover_battle_document_paths,
     launch_safe_refactor_from_tracker,
     restore_or_create_battle_documents,
     run_safe_refactor_pipeline,
@@ -15,39 +22,41 @@ from hermes_cli.safe_refactor_runtime import (
 TASK_CONTRACT_TEXT = """## Task Contract（任务合同）
 
 **Objective (目标)**  
-完成 AR-1 工程化接线收口。
+完成 AR-1 第二刀：从账本接管战役并自动串起 M3 -> M5 -> M6 的一键启动总控链。
 
 **Scope / Watchouts (范围 / 警戒线)**  
-IN: 只处理 M5/M6 接线。  
-OUT: 不削弱人工审批。  
-WATCHOUTS: 不得绕过 M6。
+IN: 只处理一键启动入口、战时文档恢复、M3 / M5 / M6 接线。  
+OUT: 不吸入归档同步器，不改 M3 审计规则，不削弱 M6 物理停机。  
+WATCHOUTS: 不得绕过 `APPROVE_CANDIDATE -> M6` 的唯一入口。
 
 **Inputs (输入)**  
 - `docs/exec-plans/tech-debt-tracker.md`
+- `docs/exec-plans/in-progress/architecture-safe-refactor-loop-status-ledger.md`
+- `docs/exec-plans/in-progress/architecture-safe-refactor-loop-verification-chain.md`
 
 **Deliverables / Evidence (交付物 / 证据)**  
-交付物：战时文档接线、归档同步器、一键启动链。  
-证据：战时文档回写、归档报告、M6 停机。
+交付物：一键启动入口、自动恢复战时文档、M3 / M5 / M6 接线。  
+证据：账本接管成功、战时文档回写、只有 `APPROVE_CANDIDATE` 才进入 M6。
 
 **Done (完成标准)**  
-M5 读写文档、归档同步可跑、一键启动可进入 M6。
+能从账本接管战役并自动恢复战时文档；只有 `APPROVE_CANDIDATE` 才进入 M6；未达条件时停在 M5-v2。
 """
 
 STATUS_LEDGER_TEXT = """**Task Contract Snapshot (合同快照)**
-- 目标：完成 AR-1 工程化接线收口。
-- 范围边界：只处理 M5/M6 接线，不削弱人工审批。
-- 完成标准：M5 读写文档、归档同步可跑、一键启动可进入 M6。
+- 目标：完成 AR-1 第二刀：从账本接管战役并自动串起 M3 -> M5 -> M6 的一键启动总控链。
+- 范围边界：只处理一键启动入口、战时文档恢复、M3 / M5 / M6 接线；不吸入归档同步器。
+- 完成标准：能从账本接管战役并自动恢复战时文档；只有 `APPROVE_CANDIDATE` 才进入 M6；未达条件时停在 M5-v2。
 
 **Current State (当前状态)**
 - 当前停点：待自动接管。
-- 已完成：无。
-- 未完成 / 当前阻塞：尚未自动回写战时文档。
+- 已完成：任务合同已恢复。
+- 未完成 / 当前阻塞：尚未运行一键启动总控链。
 - 当前判断：未完成
 
 **Evidence Logged (证据登记)**
 - 已有证据：已有任务合同。
 - 证据对应结论：可以进入 safe-refactor-loop。
-- 证据缺口：缺少自动回写、归档同步与一键启动证据。
+- 证据缺口：缺少自动回写与 M6 停机证据。
 
 **Next Handoff (下一步 / 接管指令)**
 - 接手后第一步：运行 safe-refactor-loop。
@@ -58,22 +67,25 @@ STATUS_LEDGER_TEXT = """**Task Contract Snapshot (合同快照)**
 VERIFICATION_CHAIN_TEXT = """## Verification Chain（默认验证链）
 
 **Verification Target (验证目标)**
-- 对应合同项：对应 AR-1 交付物 / 证据与完成标准。
-- 目标 1：证明 M5 能读写战时文档。
-- 目标 2：证明 APPROVE_CANDIDATE 会进入 M6。
+- 对应合同项：对应 AR-1 第二刀交付物 / 证据与完成标准。
+- 目标 1：证明入口能从账本选择当前可接管战役。
+- 目标 2：证明系统能恢复战时文档。
+- 目标 3：证明只有 `APPROVE_CANDIDATE` 才进入 M6。
 
 **Verification Actions (验证动作)**
-- 动作 1：运行 safe-refactor-loop 流水线。
-- 动作 2：检查状态台账、验证链、归档报告与账本更新。
+- 动作 1：运行 safe-refactor-loop 一键启动入口。
+- 动作 2：检查状态台账、验证链写回内容。
+- 动作 3：核对未达 `APPROVE_CANDIDATE` 时没有进入 M6。
 
 **Verification Result (验证结果)**
 - 目标 1：未执行 —— 等待流水线结果。
 - 目标 2：未执行 —— 等待流水线结果。
+- 目标 3：未执行 —— 等待流水线结果。
 
 **Release / Handoff Gate (放行 / 接管闸门)**
 - 当前判断：验证中
-- 当前缺口：缺少自动执行证据。
-- 接手后第一步：从账本接管任务。
+- 当前缺口：缺少一键启动链真实运行证据。
+- 接手后第一步：从账本接管战役。
 - 接手入口：先看任务合同、状态台账、验证链。
 """
 
@@ -83,33 +95,67 @@ TRACKER_TEXT = """# Tech Debt Tracker / 代码层收敛任务候选清单
 
 ### AR-1：`safe-refactor-loop` 自动化防爆重构 Skill / 调度器
 - **状态**：最高优先级活跃战役
+- **自动接管入口**：`docs/exec-plans/in-progress/ar-1-engineering-wiring-task-contract.md`
 - **目标**：将当前成功的人类主控流程固化为可执行状态机。
-- **当前重点**：完成工程化接线收口。
+- **当前重点**：AR-1 第二刀：一键启动总控链。
+
+### TDB-9：普通技术债
+- **状态**：等待自动化接管
+- **自动接管入口**：`docs/exec-plans/in-progress/tdb-9-task-contract.md`
+- **目标**：等待后续处理。
 """
 
 
-def _approved_review() -> AutomatedReviewResult:
+def _audit_report(audit_verdict: str) -> AuditReport:
+    findings = ()
+    if audit_verdict != "APPROVE":
+        findings = (
+            AuditFinding(
+                rule_id="stub.rule",
+                severity=audit_verdict,
+                path="hermes_cli/review_orchestrator.py",
+                line="stub",
+                source="stub",
+                message="stub finding",
+            ),
+        )
+    return AuditReport(
+        policy_id="hermes.safe_refactor.core",
+        touched_files=("hermes_cli/review_orchestrator.py", "hermes_cli/safe_refactor_runtime.py"),
+        findings=findings,
+        risk_notes=(),
+        parse_valid=True,
+    )
+
+
+def _review_result(
+    *,
+    verdict: str,
+    audit_verdict: str,
+    approval_ready: bool,
+    dual_implementation_detected: bool = False,
+) -> AutomatedReviewResult:
+    reasons = {
+        "APPROVE_CANDIDATE": ("M3 is non-hard, call-chain evidence is positive, and pytest passed",),
+        "REJECT_HARD": ("M3 audit returned REJECT_HARD and cannot be overridden",),
+        "FAKE_WIN": ("Call-chain analysis is insufficient to approve",),
+        "WARN": ("M5-v2 returned WARN and must stay in self-healing loop",),
+    }[verdict]
     return AutomatedReviewResult(
-        verdict="APPROVE_CANDIDATE",
+        verdict=verdict,
         stage_order=("m3_audit", "call_chain", "pytest", "report"),
-        reasons=("M3 非硬拒绝、调用链接线为真、pytest 通过。",),
-        audit_report=AuditReport(
-            policy_id="hermes.safe_refactor.core",
-            touched_files=("hermes_cli/review_orchestrator.py", "hermes_cli/safe_refactor_runtime.py"),
-            findings=(),
-            risk_notes=(),
-            parse_valid=True,
-        ),
+        reasons=reasons,
+        audit_report=_audit_report(audit_verdict),
         call_chain=CallChainAnalysis(
             changed_python_paths=("hermes_cli/review_orchestrator.py", "hermes_cli/safe_refactor_runtime.py"),
-            shared_helpers=("run_self_correcting_review",),
+            shared_helpers=("run_self_correcting_review",) if approval_ready else (),
             file_to_helpers={
-                "hermes_cli/review_orchestrator.py": ("run_self_correcting_review",),
-                "hermes_cli/safe_refactor_runtime.py": ("run_self_correcting_review",),
+                "hermes_cli/review_orchestrator.py": ("run_self_correcting_review",) if approval_ready else ("review_only",),
+                "hermes_cli/safe_refactor_runtime.py": ("run_self_correcting_review",) if approval_ready else ("runtime_only",),
             },
-            dual_implementation_detected=False,
-            approval_ready=True,
-            summary="检测到共享 helper：run_self_correcting_review",
+            dual_implementation_detected=dual_implementation_detected,
+            approval_ready=approval_ready,
+            summary="stub",
         ),
         pytest=PytestExecution(
             command=("pytest",),
@@ -125,20 +171,36 @@ def _approved_review() -> AutomatedReviewResult:
     )
 
 
+def _self_correcting_result(final_review: AutomatedReviewResult, *, attempts: int, stopped_after_max_attempts: bool) -> SelfCorrectionReviewResult:
+    review_attempts = tuple(
+        ReviewAttempt(
+            attempt_number=index,
+            review_result=final_review,
+            correction_instructions=None,
+        )
+        for index in range(1, attempts + 1)
+    )
+    return SelfCorrectionReviewResult(
+        verdict=final_review.verdict,
+        final_review=final_review,
+        attempts=review_attempts,
+        correction_history=(),
+        stopped_after_max_attempts=stopped_after_max_attempts,
+    )
+
+
 def _write_battle_docs(root: Path) -> BattleDocumentPaths:
     paths = BattleDocumentPaths(
         tracker_path=root / "docs/exec-plans/tech-debt-tracker.md",
         task_contract_path=root / "docs/exec-plans/in-progress/ar-1-engineering-wiring-task-contract.md",
         status_ledger_path=root / "docs/exec-plans/in-progress/architecture-safe-refactor-loop-status-ledger.md",
         verification_chain_path=root / "docs/exec-plans/in-progress/architecture-safe-refactor-loop-verification-chain.md",
-        archive_report_path=root / "docs/exec-plans/completed/ar-1-engineering-wiring-acceptance-report.md",
         battle_name="AR-1",
     )
     paths.tracker_path.parent.mkdir(parents=True, exist_ok=True)
     paths.task_contract_path.parent.mkdir(parents=True, exist_ok=True)
     paths.status_ledger_path.parent.mkdir(parents=True, exist_ok=True)
     paths.verification_chain_path.parent.mkdir(parents=True, exist_ok=True)
-    paths.archive_report_path.parent.mkdir(parents=True, exist_ok=True)
     paths.tracker_path.write_text(TRACKER_TEXT, encoding="utf-8")
     paths.task_contract_path.write_text(TASK_CONTRACT_TEXT, encoding="utf-8")
     paths.status_ledger_path.write_text(STATUS_LEDGER_TEXT, encoding="utf-8")
@@ -172,14 +234,65 @@ def test_restore_or_create_battle_documents_requires_existing_task_contract(tmp_
         raise AssertionError("缺少任务合同时必须直接失败，不能静默补造默认合同")
 
 
-def test_pipeline_writes_back_war_docs_and_enters_m6_on_approve_candidate(tmp_path):
+def test_discover_battle_document_paths_uses_tracker_and_contract_refs(tmp_path):
+    paths = _write_battle_docs(tmp_path)
+
+    resolved = discover_battle_document_paths(paths.tracker_path)
+
+    assert resolved.battle_name == "AR-1"
+    assert resolved.task_contract_path == paths.task_contract_path
+    assert resolved.status_ledger_path == paths.status_ledger_path
+    assert resolved.verification_chain_path == paths.verification_chain_path
+
+
+def test_discover_battle_document_paths_fails_closed_without_explicit_contract_path(tmp_path):
+    paths = _write_battle_docs(tmp_path)
+    paths.tracker_path.write_text(
+        TRACKER_TEXT.replace(
+            "- **自动接管入口**：`docs/exec-plans/in-progress/ar-1-engineering-wiring-task-contract.md`\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        discover_battle_document_paths(paths.tracker_path)
+    except ValueError as exc:
+        assert "显式任务合同路径" in str(exc)
+    else:
+        raise AssertionError("账本缺少显式任务合同路径时必须 fail-closed")
+
+
+def test_discover_battle_document_paths_fails_closed_without_contract_doc_refs(tmp_path):
+    paths = _write_battle_docs(tmp_path)
+    paths.task_contract_path.write_text(
+        TASK_CONTRACT_TEXT.replace(
+            "- `docs/exec-plans/in-progress/architecture-safe-refactor-loop-status-ledger.md`\n- `docs/exec-plans/in-progress/architecture-safe-refactor-loop-verification-chain.md`\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        discover_battle_document_paths(paths.tracker_path)
+    except ValueError as exc:
+        assert "状态台账" in str(exc)
+    else:
+        raise AssertionError("任务合同缺少战时文档路径时必须 fail-closed")
+
+
+def test_pipeline_writes_back_war_docs_and_enters_m6_only_on_approve_candidate(tmp_path):
     paths = _write_battle_docs(tmp_path)
     gate_calls: list[str] = []
 
     result = run_safe_refactor_pipeline(
         paths,
         diff_text="safe diff",
-        review_runner=lambda **_kwargs: _approved_review(),
+        review_runner=lambda **_kwargs: _self_correcting_result(
+            _review_result(verdict="APPROVE_CANDIDATE", audit_verdict="APPROVE", approval_ready=True),
+            attempts=2,
+            stopped_after_max_attempts=False,
+        ),
         human_gate=lambda review: gate_calls.append(review.verdict) or HumanGateDecision(
             approved=False,
             response="N",
@@ -192,21 +305,29 @@ def test_pipeline_writes_back_war_docs_and_enters_m6_on_approve_candidate(tmp_pa
     verification_text = paths.verification_chain_path.read_text(encoding="utf-8")
 
     assert result.review_result.verdict == "APPROVE_CANDIDATE"
+    assert result.entered_m6 is True
+    assert result.stopped_in_m5 is False
+    assert result.attempts_used == 2
     assert gate_calls == ["APPROVE_CANDIDATE"]
-    assert "APPROVE_CANDIDATE" in status_text
-    assert "M6 已停机等待北冥统帅输入 Y / Confirm" in status_text
-    assert "目标 1：通过" in verification_text
+    assert "M6 已停机等待北冥输入 Y / Confirm" in status_text
+    assert "entered_m6=yes" in status_text
+    assert "目标 3：通过" in verification_text
     assert "当前判断：验证中" in verification_text
 
 
-def test_archive_syncer_generates_acceptance_report_and_updates_tracker_after_human_approval(tmp_path):
+def test_pipeline_stops_in_m5_after_three_attempts_and_never_enters_m6(tmp_path):
     paths = _write_battle_docs(tmp_path)
+    gate_calls: list[str] = []
 
     result = run_safe_refactor_pipeline(
         paths,
-        diff_text="safe diff",
-        review_runner=lambda **_kwargs: _approved_review(),
-        human_gate=lambda _review: HumanGateDecision(
+        diff_text="unsafe diff",
+        review_runner=lambda **_kwargs: _self_correcting_result(
+            _review_result(verdict="REJECT_HARD", audit_verdict="REJECT_HARD", approval_ready=False),
+            attempts=3,
+            stopped_after_max_attempts=True,
+        ),
+        human_gate=lambda review: gate_calls.append(review.verdict) or HumanGateDecision(
             approved=True,
             response="Confirm",
             prompt_text="M6 gate: APPROVE_CANDIDATE",
@@ -214,35 +335,46 @@ def test_archive_syncer_generates_acceptance_report_and_updates_tracker_after_hu
         allow_test_gate_override=True,
     )
 
-    report_text = paths.archive_report_path.read_text(encoding="utf-8")
-    tracker_text = paths.tracker_path.read_text(encoding="utf-8")
+    status_text = paths.status_ledger_path.read_text(encoding="utf-8")
+    verification_text = paths.verification_chain_path.read_text(encoding="utf-8")
 
-    assert result.archive_written is True
-    assert "AR-1 工程化接线收口结案报告" in report_text
-    assert "M5 能自动读取并回写战时文档" in report_text
-    assert "阶段结案：工程化接线收口已完成" in tracker_text
-    assert "见 `docs/exec-plans/completed/ar-1-engineering-wiring-acceptance-report.md`" in tracker_text
+    assert result.review_result.verdict == "REJECT_HARD"
+    assert result.entered_m6 is False
+    assert result.stopped_in_m5 is True
+    assert result.attempts_used == 3
+    assert gate_calls == []
+    assert "M5-v2 自愈循环达到 3 次上限后停机" in status_text
+    assert "entered_m6=no" in status_text
+    assert "目标 3：不通过" in verification_text
+    assert "当前判断：不通过" in verification_text
 
 
-def test_human_rejection_does_not_archive_or_update_tracker(tmp_path):
-    paths = _write_battle_docs(tmp_path)
-    original_tracker = paths.tracker_path.read_text(encoding="utf-8")
+def test_warn_and_fake_win_never_enter_m6(tmp_path):
+    for verdict, audit_verdict in [("WARN", "WARN"), ("FAKE_WIN", "WARN")]:
+        root = tmp_path / verdict.lower()
+        paths = _write_battle_docs(root)
 
-    result = run_safe_refactor_pipeline(
-        paths,
-        diff_text="safe diff",
-        review_runner=lambda **_kwargs: _approved_review(),
-        human_gate=lambda _review: HumanGateDecision(
-            approved=False,
-            response="N",
-            prompt_text="M6 gate: APPROVE_CANDIDATE",
-        ),
-        allow_test_gate_override=True,
-    )
+        def review_runner(**_kwargs):
+            return _self_correcting_result(
+                _review_result(verdict=verdict, audit_verdict=audit_verdict, approval_ready=False),
+                attempts=1,
+                stopped_after_max_attempts=False,
+            )
 
-    assert result.archive_written is False
-    assert not paths.archive_report_path.exists()
-    assert paths.tracker_path.read_text(encoding="utf-8") == original_tracker
+        result = run_safe_refactor_pipeline(
+            paths,
+            diff_text=f"{verdict} diff",
+            review_runner=review_runner,
+            human_gate=lambda _review: HumanGateDecision(
+                approved=True,
+                response="Confirm",
+                prompt_text="M6 gate: APPROVE_CANDIDATE",
+            ),
+            allow_test_gate_override=True,
+        )
+
+        assert result.entered_m6 is False
+        assert result.stopped_in_m5 is True
 
 
 def test_human_gate_override_requires_explicit_test_flag(tmp_path):
@@ -252,7 +384,11 @@ def test_human_gate_override_requires_explicit_test_flag(tmp_path):
         run_safe_refactor_pipeline(
             paths,
             diff_text="safe diff",
-            review_runner=lambda **_kwargs: _approved_review(),
+            review_runner=lambda **_kwargs: _self_correcting_result(
+                _review_result(verdict="APPROVE_CANDIDATE", audit_verdict="APPROVE", approval_ready=True),
+                attempts=1,
+                stopped_after_max_attempts=False,
+            ),
             human_gate=lambda _review: HumanGateDecision(
                 approved=True,
                 response="Confirm",
@@ -271,7 +407,6 @@ def test_launch_safe_refactor_from_tracker_selects_active_battle_and_runs_pipeli
 
     result = launch_safe_refactor_from_tracker(
         tracker_path=paths.tracker_path,
-        battle_paths={"AR-1": paths},
         diff_text="safe diff",
         pipeline_runner=lambda chosen_paths, **_kwargs: launch_calls.append(chosen_paths.battle_name) or {
             "battle_name": chosen_paths.battle_name,
@@ -285,65 +420,13 @@ def test_launch_safe_refactor_from_tracker_selects_active_battle_and_runs_pipeli
     assert result["battle_name"] == "AR-1"
 
 
-def test_select_active_battle_does_not_cross_match_other_sections():
+def test_select_active_battle_falls_back_to_waiting_automation_takeover():
     tracker_text = """# tracker
 
 ### TDB-9：普通技术债
 - **状态**：等待自动化接管
+- **自动接管入口**：`docs/exec-plans/in-progress/tdb-9-task-contract.md`
 - **目标**：先放着
-
-### BATCH-1：并行批次战役
-- **状态**：最高优先级活跃战役
-- **目标**：这是当前应被接管的战役
-- **当前重点**：收口
 """
 
-    assert select_active_battle(tracker_text) == "BATCH-1"
-
-
-def test_stage_closure_updates_tracker_for_non_ar_battle_name(tmp_path):
-    paths = BattleDocumentPaths(
-        tracker_path=tmp_path / "docs/exec-plans/tech-debt-tracker.md",
-        task_contract_path=tmp_path / "docs/exec-plans/in-progress/batch-1-task-contract.md",
-        status_ledger_path=tmp_path / "docs/exec-plans/in-progress/batch-1-status-ledger.md",
-        verification_chain_path=tmp_path / "docs/exec-plans/in-progress/batch-1-verification-chain.md",
-        archive_report_path=tmp_path / "docs/exec-plans/completed/batch-1-acceptance-report.md",
-        battle_name="BATCH-1",
-    )
-    for target in [
-        paths.tracker_path,
-        paths.task_contract_path,
-        paths.status_ledger_path,
-        paths.verification_chain_path,
-        paths.archive_report_path,
-    ]:
-        target.parent.mkdir(parents=True, exist_ok=True)
-    paths.tracker_path.write_text(
-        """# tracker
-
-### BATCH-1：并行批次战役
-- **状态**：最高优先级活跃战役
-- **目标**：完成批次收口。
-- **当前重点**：等待工程化接线。
-""",
-        encoding="utf-8",
-    )
-    paths.task_contract_path.write_text(TASK_CONTRACT_TEXT.replace("AR-1", "BATCH-1"), encoding="utf-8")
-    paths.status_ledger_path.write_text(STATUS_LEDGER_TEXT.replace("AR-1", "BATCH-1"), encoding="utf-8")
-    paths.verification_chain_path.write_text(VERIFICATION_CHAIN_TEXT.replace("AR-1", "BATCH-1"), encoding="utf-8")
-
-    run_safe_refactor_pipeline(
-        paths,
-        diff_text="safe diff",
-        review_runner=lambda **_kwargs: _approved_review(),
-        human_gate=lambda _review: HumanGateDecision(
-            approved=True,
-            response="Confirm",
-            prompt_text="M6 gate: APPROVE_CANDIDATE",
-        ),
-        allow_test_gate_override=True,
-    )
-
-    tracker_text = paths.tracker_path.read_text(encoding="utf-8")
-    assert "阶段结案：工程化接线收口已完成" in tracker_text
-    assert "BATCH-1：并行批次战役" in tracker_text
+    assert select_active_battle(tracker_text) == "TDB-9"

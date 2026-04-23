@@ -27,7 +27,7 @@ def _review_result() -> AutomatedReviewResult:
             summary="检测到共享 helper：run_self_correcting_review",
         ),
         pytest=PytestExecution(
-            command=("pytest", "tests/hermes_cli/test_safe_refactor_runtime.py"),
+            command=("pytest",),
             exit_code=0,
             output="3 passed\n",
             summary="exit=0; 3 passed",
@@ -47,15 +47,16 @@ def test_m6_accepts_explicit_y_or_confirm_and_prints_compact_request(capsys):
     out_y = capsys.readouterr().out
 
     assert decision_y.approved is True
-    assert prompts == ["Approve deployment? [Y/Confirm]: "]
-    assert "M6 gate: APPROVE_CANDIDATE" in out_y
-    assert "pytest_exit=0" in out_y
+    assert prompts == ["北冥是否批准进入下一步？[Y/Confirm]: "]
+    assert "《北冥裁决请示书》" in out_y
+    assert "当前裁决: APPROVE_CANDIDATE" in out_y
+    assert "pytest: exit=0" in out_y
 
     controller_confirm = HumanGateController(input_fn=lambda _prompt: "Confirm")
     decision_confirm = controller_confirm.require_explicit_approval(_review_result())
 
     assert decision_confirm.approved is True
-    assert build_approval_request(_review_result()).startswith("M6 gate: APPROVE_CANDIDATE")
+    assert build_approval_request(_review_result()).startswith("《北冥裁决请示书》")
 
 
 def test_m6_rejects_non_explicit_inputs():
