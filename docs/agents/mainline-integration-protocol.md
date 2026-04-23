@@ -1,80 +1,131 @@
-# Mainline Integration Protocol
+# Mainline Integration Protocol / 主线收编法则
 
-## 适用范围
+> 定位：这里定义“什么叫主线收编”，以及主线收编时必须遵守的固定规则。
+> 它不是普通任务流程说明，也不是 Git 教程。
+> 它只回答：什么时候可以把战果刻进主线石碑，什么时候必须打回。
 
-当任务进入 safe-refactor-loop 的“主线收编模式”时，必须遵守本协议。
-本协议当前用于 AR-1「工程化接线收口」主线收编与收编前纠偏准备，严格区分：
-- 任务级结案
-- 候选提交形成
-- 真正进入 `origin/main`
+## 1. 核心原则
 
-本轮若未得到统帅明确放行，只允许形成本地候选提交，不得 `push`，不得视为已收编。
+- 主线收编不是单纯 `push`，而是先做主线收编级验收，再执行 Git 收编动作。
+- `任务完成` 不等于 `主线可推送`。
+- 没有北冥签字，任何代码都不准合并。
+- 没有 `可收编` 裁决，任何代码都不准推送。
+- 不得因为赶时间跳过逐文件审查、测试复验或 Git 边界审查。
+- 若任务对象、协议对象、候选边界三者不一致，必须先打回纠偏，不得代为改判。
 
-## 强制前置检查
+## 2. 主线收编级验收（固定检查项）
 
-1. 必须先确认战役身份一致；本轮对象只能是 AR-1，不得继续沿用 PAC-CORE-001 专用协议审 AR-1。
-2. 必须先确认候选工作树基线为干净 `origin/main`，不得把前置分支或无关历史夹带进来。
-3. 必须先恢复并核对 AR-1 现场文档：Task Contract、Status Ledger、Verification Chain、Acceptance Report、`tech-debt-tracker.md`。
-4. 必须先把协议纠偏为 AR-1 版本，再整理候选提交；协议未纠偏前，不得开始正式主线验收。
-5. 必须依次完成：文件范围审查、代码与文档一致性审查、测试复验、Git 收编边界审查。
-6. 本轮准备任务必须形成“单一可审计候选提交”；未形成提交前，不得宣称候选已就位。
+### 2.1 任务对象与协议对象一致性检查
+必须先确认：
+- 用户点名的战役文档真实存在
+- 当前恢复出的 battle 与用户点名 battle 一致
+- `docs/agents/mainline-integration-protocol.md` 的规则口径已对应当前战役，而不是沿用上一战役专用协议
 
-## 验收通过条件
+只要任务对象、协议对象、现场候选三者任一错位，立即打回。
 
-只有同时满足以下条件，才允许把 AR-1 视为“主线候选已形成”：
+### 2.2 文件范围审查
+必须逐个确认本轮拟收编的关键文件，至少包括：
+- 代码文件
+- 测试文件
+- Status Ledger
+- Verification Chain
+- 结案报告
+- `tech-debt-tracker.md`
 
-- `docs/agents/mainline-integration-protocol.md` 已纠偏为 AR-1 主线收编协议。
-- `git status --short` 中除 AR-1 合法候选文件外，不存在其他待纳入改动。
-- 候选提交为单一、本地、可审计 commit，且 commit 内容只覆盖 AR-1 合法收编文件。
-- 代码实现、战时文档、账本、结案报告口径一致。
-- 约定最小测试复验通过，且结果与文档一致。
-- 未执行 `git push`，未直接收编到 `origin/main`。
+必须明确：
+- 哪些文件应进入主线
+- 哪些文件不应进入主线
 
-任一条件不满足，直接打回，不得以“代码已经差不多完成”替代边界验收。
+### 2.3 代码与文档一致性审查
+必须检查：
+- 任务汇报是否与实际文件一致
+- Status Ledger / Verification Chain / 结案报告 / 账本是否互相一致
+- 是否存在“任务说完成，但文件内容不对”
+- 是否存在“文档已结案，但代码没到位”
 
-## AR-1 合法收编范围
+### 2.4 测试复验
+必须在当前收编环境中重新运行关键测试。
+不得只相信历史汇报结果。
 
-本轮 AR-1「工程化接线收口」允许纳入候选提交的文件仅限：
+### 2.5 Git 收编边界审查
+必须明确：
+- 哪些文件该 `git add`
+- 哪些文件不该 `git add`
+- 是否存在脏改动、临时文件、战时文件、无关改动混入
+- 候选分支是否以 `main` / `origin/main` 为干净祖先
+- `git show --stat --summary HEAD` 与 `git diff --name-status main..HEAD` 是否共同指向同一候选边界
 
-- `docs/agents/mainline-integration-protocol.md`
-- `docs/exec-plans/in-progress/ar-1-engineering-wiring-task-contract.md`
-- `docs/exec-plans/in-progress/architecture-safe-refactor-loop-status-ledger.md`
-- `docs/exec-plans/in-progress/architecture-safe-refactor-loop-verification-chain.md`
-- `docs/exec-plans/completed/ar-1-engineering-wiring-acceptance-report.md`
-- `docs/exec-plans/tech-debt-tracker.md`
-- `hermes_cli/gate_controller.py`
-- `hermes_cli/human_gate_controller.py`
-- `hermes_cli/review_orchestrator.py`
-- `hermes_cli/safe_refactor_runtime.py`
-- `tests/hermes_cli/test_human_gate_controller.py`
-- `tests/hermes_cli/test_review_orchestrator.py`
-- `tests/hermes_cli/test_safe_refactor_runtime.py`
+若 `HEAD` 展示的当前提交内容，与“直接入 main 会带上的文件集合”不一致，且多出的文件不属于本战役候选，必须直接打回。
 
-除上述文件外：
-- 不得混入 PAC-CORE-001 专用文件
-- 不得混入无关 CLI/Provider/Website 改动
-- 不得为凑提交而顺手补其他技术债
+### 2.6 远端前进审查
+当 `git push origin main` 被 `fetch first` 或同类拒绝拦下时，必须先：
+- `git fetch origin main`
+- 判定 `origin/main` 已吸收哪一层战果
+- 再决定是 rebase 现有 closure commit，还是继续推动完整收编提交
 
-## Git 动作纪律
+不得强推，不得未经核对就重做一遍完整收编。
 
-本轮是“纠偏准备任务”，Git 动作只允许到候选提交为止：
+只有完成以上检查并得到 `可收编` 裁决后，才允许进入 Git 动作。
 
-1. `git add` 仅添加 AR-1 合法收编文件。
-2. `git commit` 必须形成单一可审计候选提交，并明确标注这是 `AR-1 主线收编候选`。
-3. 禁止 `git push origin main`。
-4. 禁止在未获统帅后续放行前执行任何直接收编动作。
+## 3. Git 收编动作
 
-若验收不通过：
-- 不得执行 `git push`
-- 不得伪造“候选已形成”
-- 不得把工作树脏改动冒充为可审计候选提交
+若且仅若验收通过，才允许执行：
+1. `git add`（仅添加应收编文件）
+2. `git commit`（提交信息必须准确说明本轮主线收编目标）
+3. `git push origin main`
 
-## 统帅汇报模板
+## 4. 固定红线
 
-1. 任务结论
-2. 新协议是否已就位
-3. AR-1 候选提交是否已形成
-4. 纳入候选文件
-5. 排除文件
-6. 测试与 Git 证据
-7. 下一步约束
+- 不得把无关文件、脏文件、临时文件、战时文件一并收编
+- 不得把 `任务完成` 直接等同于 `主线可推送`
+- 不得在协议仍指向上一战役、或当前候选尚未形成单一可审计提交时继续收编
+- 若验收发现问题，必须明确打回，不得强推
+- 若存在不确定项，优先收紧收编范围，不要扩大
+
+## 5. 模板索引与汇报合规
+
+主线收编任务完成后，必须使用统一模板：
+- `docs/agents/beiming-report-template-v2.md`
+
+模板引用与路径写法必须同时服从以下口径：
+- 仓库内文件一律使用仓库相对路径
+- 不得混用 `.hermes/hermes-agent/...` 这类仓库内投影式路径
+- Skill 或系统文件若在仓库外，可使用绝对路径，但必须明确标注为“仓库外”
+
+关于 `Session ID` 的特殊规则：
+- 若执行体运行时可直接读取会话标识，则必须填写真实 `Session ID`
+- 若执行体运行时无法读取会话标识，则必须明确写为：`Session ID: 未暴露（需北冥通过 /status 补充）`
+- 不得编造 Session ID，不得留空不解释
+
+关于“未暴露”的使用边界：
+- 只允许用于运行时确实无法读取的字段
+- `Session ID` 只能使用固定句式 `未暴露（需北冥通过 /status 补充）`
+- `当前分支` 与 `当前候选提交（如有）` 仅在运行时未提供 Git 信息时允许写“未暴露”
+- 其余字段应按事实写真实值、`无`、`未执行`、`未产出` 或真实执行形态，不得滥写“未暴露”
+
+主线收编模式下，若最终汇报缺少以下任一关键字段，视为法典不合规：
+- `Session ID`
+- `模式`
+- `阶段`
+- `worktree`
+- `Git 状态`
+- `下一步唯一建议`
+
+拦截原则：
+- 若执行体可读取会话标识却未填写 `Session ID` → 至少 `WARN`
+- 若执行体无法读取会话标识，但未明确写出“`Session ID: 未暴露（需北冥通过 /status 补充）`” → 至少 `WARN`
+- 若执行体编造 Session ID 或留空不解释 → `REJECT_HARD`
+- 缺 `worktree` / `模式` / `阶段` → 至少 `WARN`
+- 若把仓库内文件写成 `.hermes/hermes-agent/...` 等投影式路径 → 至少 `WARN`
+- 若把“未暴露”滥用于本应写真实值、`无`、`未执行`、`未产出` 的字段 → 至少 `WARN`
+- 主线收编类任务缺 `Git 状态` → `REJECT_HARD`
+- 缺 `下一步唯一建议` → 至少 `WARN`
+- 给多个下一步选项而不是唯一建议 → 主线收编模式下可升级为 `REJECT_HARD`
+
+## 6. 使用边界
+
+- 这里不替代 `safe-refactor-loop` 的状态机
+- 这里不替代具体任务合同
+- 这里不自动授权任何高危动作
+- 这里仅定义：主线收编时必须遵守的固定法律、固定检查项、固定红线与模板索引
+- 具体战史经验与失败先例统一进入 `docs/agents/law-casebook.md`
