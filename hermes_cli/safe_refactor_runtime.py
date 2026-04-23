@@ -28,6 +28,7 @@ class BattleDocumentPaths:
     task_contract_path: Path
     status_ledger_path: Path
     verification_chain_path: Path
+    archive_report_path: Path
     battle_name: str
 
 
@@ -36,6 +37,7 @@ class SafeRefactorRuntimeResult:
     battle_name: str
     review_result: Any
     human_gate_decision: HumanGateDecision | None
+    archive_written: bool
     entered_m6: bool
     attempts_used: int
     stopped_in_m5: bool
@@ -97,12 +99,19 @@ def discover_battle_document_paths(
         suffix="verification-chain.md",
         label="验证链",
     )
+    archive_report_path = _resolve_document_path_from_contract(
+        tracker=tracker,
+        task_contract_text=task_contract_text,
+        suffix="acceptance-report.md",
+        label="结案报告",
+    )
 
     return BattleDocumentPaths(
         tracker_path=tracker,
         task_contract_path=task_contract_path,
         status_ledger_path=status_ledger_path,
         verification_chain_path=verification_chain_path,
+        archive_report_path=archive_report_path,
         battle_name=entry.battle_name,
     )
 
@@ -169,10 +178,17 @@ def run_safe_refactor_pipeline(
         stopped_after_max_attempts=stopped_after_max_attempts,
     )
 
+    archive_written = False
+    if human_gate_decision and human_gate_decision.approved:
+        _write_archive_report(paths, docs, final_review.verdict)
+        _update_tracker_for_stage_closure(paths)
+        archive_written = True
+
     return SafeRefactorRuntimeResult(
         battle_name=paths.battle_name,
         review_result=final_review,
         human_gate_decision=human_gate_decision,
+        archive_written=archive_written,
         entered_m6=entered_m6,
         attempts_used=attempts_used,
         stopped_in_m5=not entered_m6,
@@ -386,6 +402,90 @@ def _write_verification_chain(
         "- 接手入口：先看任务合同、状态台账、验证链与 `docs/exec-plans/tech-debt-tracker.md`。\n"
     )
     path.write_text(text, encoding="utf-8")
+
+
+def _write_archive_report(paths: BattleDocumentPaths, docs: dict[str, str], review_verdict: str) -> None:
+    report_path = _ensure_repo_docs_path(paths.archive_report_path, label="结案报告")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    text = (
+        f"# {paths.battle_name} 工程化接线收口结案报告\n\n"
+        "## 1. 任务合同（Task Contract）\n\n"
+        f"见 `{_repo_relative_display_path(report_path, paths.task_contract_path)}`。\n\n"
+        "## 2. 结案结论\n\n"
+        f"- {paths.battle_name} 已完成三刀联合收编准备所需的工程化接线复核。\n"
+        f"- 当前复审裁决为 `{review_verdict}`，且 M6 已收到北冥显式批准。\n"
+        "- 账本、任务合同、状态台账、验证链与结案报告已完成同轮收口。\n\n"
+        "## 3. 关键证据\n\n"
+        f"- Status Ledger：`{_repo_relative_display_path(report_path, paths.status_ledger_path)}`\n"
+        f"- Verification Chain：`{_repo_relative_display_path(report_path, paths.verification_chain_path)}`\n"
+        f"- Tech Debt Tracker：`{_repo_relative_display_path(report_path, paths.tracker_path)}`\n"
+        f"- Task Contract：`{_repo_relative_display_path(report_path, paths.task_contract_path)}`\n"
+        "- 结论：M6 已收到北冥显式批准。\n\n"
+        "## 4. 当前边界\n\n"
+        "- 本报告只证明任务级收口，不代表已 push、已 merge 或已入主线。\n"
+        "- 若要进入主线，仍需另行完成主线收编级验收。\n"
+    )
+    report_path.write_text(text, encoding="utf-8")
+
+
+def _update_tracker_for_stage_closure(paths: BattleDocumentPaths) -> None:
+    tracker_path = _ensure_repo_docs_path(paths.tracker_path, label="账本")
+    report_rel = _repo_relative_display_path(tracker_path, paths.archive_report_path)
+    tracker_text = tracker_path.read_text(encoding="utf-8")
+    section_pattern = re.compile(
+        rf"(?ms)^(###\s+{re.escape(paths.battle_name)}[^\n]*\n)(.*?)(?=^###\s+|\Z)"
+    )
+    match = section_pattern.search(tracker_text)
+    if not match:
+        raise ValueError(f"账本中不存在战役：{paths.battle_name}")
+    body = match.group(2)
+    body = re.sub(
+        r"^- \*\*状态\*\*：.*$",
+        f"- **状态**：最高优先级活跃战役（阶段结案：工程化接线收口已完成，见 `{report_rel}`）",
+        body,
+        count=1,
+        flags=re.M,
+    )
+    current_focus_pattern = re.compile(r"^- \*\*当前重点\*\*：.*$", re.M)
+    if current_focus_pattern.search(body):
+        body = current_focus_pattern.sub(
+            "- **当前重点**：工程化接线收口已完成；下一阶段转入 M4 / M1 / M2 / M7 的持续工程化。",
+            body,
+            count=1,
+        )
+    else:
+        body = body.rstrip() + "\n- **当前重点**：工程化接线收口已完成；下一阶段转入 M4 / M1 / M2 / M7 的持续工程化。\n"
+    if f"见 `{report_rel}`" not in body:
+        body = body.rstrip() + f"\n- **结案报告**：见 `{report_rel}`\n"
+    tracker_path.write_text(tracker_text[: match.start(2)] + body + tracker_text[match.end(2):], encoding="utf-8")
+
+
+def _ensure_repo_docs_path(path: Path, *, label: str) -> Path:
+    resolved = path.resolve(strict=False)
+    parts = resolved.parts
+    if "docs" not in parts:
+        raise ValueError(f"{label}路径越界：{path}")
+    docs_index = parts.index("docs")
+    repo_root = Path(*parts[:docs_index])
+    if repo_root == Path():
+        repo_root = Path("/")
+    docs_root = repo_root / "docs"
+    try:
+        resolved.relative_to(docs_root)
+    except ValueError as exc:
+        raise ValueError(f"{label}路径越界：{path}") from exc
+    return resolved
+
+
+def _repo_relative_display_path(anchor_path: Path, target_path: Path) -> str:
+    anchor = _ensure_repo_docs_path(anchor_path, label="锚点")
+    target = _ensure_repo_docs_path(target_path, label="目标")
+    parts = anchor.parts
+    docs_index = parts.index("docs")
+    repo_root = Path(*parts[:docs_index])
+    if repo_root == Path():
+        repo_root = Path("/")
+    return target.relative_to(repo_root).as_posix()
 
 
 def _default_status_ledger(battle_name: str, task_contract_text: str) -> str:

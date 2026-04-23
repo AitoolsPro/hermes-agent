@@ -33,6 +33,7 @@ WATCHOUTS: 不得绕过 `APPROVE_CANDIDATE -> M6` 的唯一入口。
 - `docs/exec-plans/tech-debt-tracker.md`
 - `docs/exec-plans/in-progress/architecture-safe-refactor-loop-status-ledger.md`
 - `docs/exec-plans/in-progress/architecture-safe-refactor-loop-verification-chain.md`
+- `docs/exec-plans/completed/ar-1-engineering-wiring-acceptance-report.md`
 
 **Deliverables / Evidence (交付物 / 证据)**  
 交付物：一键启动入口、自动恢复战时文档、M3 / M5 / M6 接线。  
@@ -195,12 +196,14 @@ def _write_battle_docs(root: Path) -> BattleDocumentPaths:
         task_contract_path=root / "docs/exec-plans/in-progress/ar-1-engineering-wiring-task-contract.md",
         status_ledger_path=root / "docs/exec-plans/in-progress/architecture-safe-refactor-loop-status-ledger.md",
         verification_chain_path=root / "docs/exec-plans/in-progress/architecture-safe-refactor-loop-verification-chain.md",
+        archive_report_path=root / "docs/exec-plans/completed/ar-1-engineering-wiring-acceptance-report.md",
         battle_name="AR-1",
     )
     paths.tracker_path.parent.mkdir(parents=True, exist_ok=True)
     paths.task_contract_path.parent.mkdir(parents=True, exist_ok=True)
     paths.status_ledger_path.parent.mkdir(parents=True, exist_ok=True)
     paths.verification_chain_path.parent.mkdir(parents=True, exist_ok=True)
+    paths.archive_report_path.parent.mkdir(parents=True, exist_ok=True)
     paths.tracker_path.write_text(TRACKER_TEXT, encoding="utf-8")
     paths.task_contract_path.write_text(TASK_CONTRACT_TEXT, encoding="utf-8")
     paths.status_ledger_path.write_text(STATUS_LEDGER_TEXT, encoding="utf-8")
@@ -243,6 +246,7 @@ def test_discover_battle_document_paths_uses_tracker_and_contract_refs(tmp_path)
     assert resolved.task_contract_path == paths.task_contract_path
     assert resolved.status_ledger_path == paths.status_ledger_path
     assert resolved.verification_chain_path == paths.verification_chain_path
+    assert resolved.archive_report_path == paths.archive_report_path
 
 
 def test_discover_battle_document_paths_fails_closed_without_explicit_contract_path(tmp_path):
@@ -399,6 +403,60 @@ def test_human_gate_override_requires_explicit_test_flag(tmp_path):
         assert "allow_test_gate_override" in str(exc)
     else:
         raise AssertionError("未显式允许时，不应接受注入式 human_gate 覆盖真实审批")
+
+
+def test_archive_syncer_generates_acceptance_report_and_updates_tracker_after_human_approval(tmp_path):
+    paths = _write_battle_docs(tmp_path)
+
+    result = run_safe_refactor_pipeline(
+        paths,
+        diff_text="safe diff",
+        review_runner=lambda **_kwargs: _self_correcting_result(
+            _review_result(verdict="APPROVE_CANDIDATE", audit_verdict="APPROVE", approval_ready=True),
+            attempts=1,
+            stopped_after_max_attempts=False,
+        ),
+        human_gate=lambda _review: HumanGateDecision(
+            approved=True,
+            response="Confirm",
+            prompt_text="M6 gate: APPROVE_CANDIDATE",
+        ),
+        allow_test_gate_override=True,
+    )
+
+    report_text = paths.archive_report_path.read_text(encoding="utf-8")
+    tracker_text = paths.tracker_path.read_text(encoding="utf-8")
+
+    assert result.archive_written is True
+    assert "AR-1" in report_text
+    assert "M6 已收到北冥显式批准" in report_text
+    assert "阶段结案：工程化接线收口已完成" in tracker_text
+    assert "见 `docs/exec-plans/completed/ar-1-engineering-wiring-acceptance-report.md`" in tracker_text
+
+
+def test_human_rejection_does_not_archive_or_update_tracker(tmp_path):
+    paths = _write_battle_docs(tmp_path)
+    original_tracker = paths.tracker_path.read_text(encoding="utf-8")
+
+    result = run_safe_refactor_pipeline(
+        paths,
+        diff_text="safe diff",
+        review_runner=lambda **_kwargs: _self_correcting_result(
+            _review_result(verdict="APPROVE_CANDIDATE", audit_verdict="APPROVE", approval_ready=True),
+            attempts=1,
+            stopped_after_max_attempts=False,
+        ),
+        human_gate=lambda _review: HumanGateDecision(
+            approved=False,
+            response="N",
+            prompt_text="M6 gate: APPROVE_CANDIDATE",
+        ),
+        allow_test_gate_override=True,
+    )
+
+    assert result.archive_written is False
+    assert not paths.archive_report_path.exists()
+    assert paths.tracker_path.read_text(encoding="utf-8") == original_tracker
 
 
 def test_launch_safe_refactor_from_tracker_selects_active_battle_and_runs_pipeline(tmp_path):
