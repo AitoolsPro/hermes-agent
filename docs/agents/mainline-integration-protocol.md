@@ -114,7 +114,7 @@
 拦截原则：
 - 若执行体可读取会话标识却未填写 `Session ID` → 至少 `WARN`
 - 若执行体无法读取会话标识，但未明确写出“`Session ID: 未暴露（需北冥通过 /status 补充）`” → 至少 `WARN`
-- 若执行体编造 Session ID 或留空不解释 → `REJECT_HARD`
+- 若执行体编造 Session ID 或留空不解释 → 硬拒绝（REJECT_HARD）
 - 缺 `worktree` / `模式` / `阶段` → 至少 `WARN`
 - 若把仓库内文件写成 `.hermes/hermes-agent/...` 等投影式路径 → 至少 `WARN`
 - 若把“未暴露”滥用于本应写真实值、`无`、`未执行`、`未产出` 的字段 → 至少 `WARN`

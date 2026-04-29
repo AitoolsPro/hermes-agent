@@ -13,15 +13,15 @@
 
 ## 2. 通用法典案例
 
-### Case 1：`FAKE_WIN` 战例
+### Case 1：假通过（FAKE_WIN）战例
 - 现象：测试通过、报告好看，但控制流没有真实对齐。
 - 法典结论：`FAKE_WIN` 不是胜利，必须继续打回。
-- 对应淬炼：M5 不得被“测试全绿”诱导误判。
+- 对应淬炼：Self-Heal Gate【M5】不得被"测试全绿"诱导误判。
 
 ### Case 2：TTY 降级必死战例
 - 现象：执行体试图通过显性或隐性方式放宽 `_require_tty("uninstall")` 或确认边界。
-- 法典结论：一律 `REJECT_HARD`。
-- 对应淬炼：M3 必须把 TTY 降级视为契约级越界，而不是普通优化。
+- 法典结论：一律 硬拒绝（REJECT_HARD）。
+- 对应淬炼：Code Audit Gate【M3】必须把 TTY 降级视为契约级越界，而不是普通优化。
 
 ### Case 3：`rm` 拦截事件
 - 现象：任务推进中出现潜在危险删除动作，系统选择停手而非暴力绕过。
@@ -40,7 +40,7 @@
 - 法典结论：候选 diff 必须纯净可归因；脏工作树先切隔离 worktree。
 - 对应淬炼：safe-refactor-loop 把“先记录 branch / HEAD，再基于该 SHA 新建隔离 worktree”固化为实战纪律。
 
-### Case 6：M3 白名单未放开的测试文件，不得擅自新建同类新文件
+### Case 6：Code Audit Gate【M3】白名单未放开的测试文件，不得擅自新建同类新文件
 - 事故：TDB-3 首轮把最小测试写进新文件 `tests/hermes_cli/test_uninstall_flags.py`，语义虽正确，仍被 `FILE_SCOPE` 打回。
 - 法典结论：当审计器仍按具体白名单放行时，执行体必须优先复用白名单内既有测试文件。
 - 对应淬炼：测试语义正确不等于文件范围合规。
@@ -85,7 +85,7 @@
 - 法典结论：先按 `^### ` 分段，再在每个 section 内独立解析 battle name 与状态。
 - 对应淬炼：账本解析必须 section-aware，不能靠跨段 `re.S` 侥幸命中。
 
-### Case 15：M6 人工闸门不得允许外部注入假批准器
+### Case 15：Human Approval Gate【M6】人工闸门不得允许外部注入假批准器
 - 事故：AR-1 第二轮独立复审指出，首版 pipeline 只要传入永远 `approved=True` 的 `human_gate` 就能跳过真实人审并触发归档。
 - 法典结论：生产默认路径必须强制走 `HumanGateController`；测试替身只有显式白名单时才允许生效。
 - 对应淬炼：人工审批闸门属于主权锚点，不得因可测试性被默认旁路。

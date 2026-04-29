@@ -47,4 +47,76 @@
 - 真实受控入口仍看 `docs/agents/controlled-entry-index.md`
 - 主线收编规则仍看 `docs/agents/mainline-integration-protocol.md`
 - 战史经验与法典淬炼案例统一进入 `docs/agents/law-casebook.md`
-- 北冥汇报模板统一看 `docs/agents/beiming-report-template-v2.md`，仓库内引用一律使用该仓库相对路径；若引用仓库外 Skill，则应明确写绝对路径并标注“仓库外”
+- 北冥汇报模板统一看 `docs/agents/beiming-report-template-v2.md`，仓库内引用一律使用该仓库相对路径；若引用仓库外 Skill，则应明确写绝对路径并标注"仓库外"
+
+## 8. 术语表 / Glossary
+
+本章定义北冥法典中所有专用术语、代号、缩写及其正式全称。阅读法典其他文件前，请先查阅本章。
+
+### 8.1 状态机阶段
+
+北冥法典执行引擎的 8 个阶段，S = Stage：
+
+| 代号 | 正式名称 | 中文描述 |
+|------|---------|---------|
+| S0 | Intake & Qualification | 任务受理与资格检查 |
+| S1 | Contract Generation | 合同生成与风险边界锁定 |
+| S2 | Battle Station Setup | 战时建制（建立 Status Ledger + Verification Chain） |
+| S3 | Task Dispatch | 实现派工 |
+| S4 | Code Audit Stage | 自动化第一层复审（执行 M3 审计 → 调用链差异 → pytest） |
+| S5 | Self-Heal & Adjudication | 自愈循环与越界裁决（执行 M5 自动复审，最多 3 轮自愈） |
+| S6 | Human Approval Gate | 人工审批闸门（执行 M6，物理停机等北冥签字） |
+| S7 | Archive & Settlement | 归档平账（结案报告、更新账本、挂起下一债） |
+
+### 8.2 审计闸门
+
+M = Milestone Gate。仅以下三个 Gate 具有自动复审、裁决与 fail/reject 能力：
+
+| 代号 | 正式名称 | 职责 |
+|------|---------|------|
+| M3 | Code Audit Gate | 代码级自动审计：扫描候选 diff、检查越界/降级/常量绕过/策略冲突 |
+| M5 | Self-Heal Gate | 自愈循环裁决：自动复审 + 最多 3 轮自愈，输出 APPROVE_CANDIDATE 或 REJECT_HARD |
+| M6 | Human Approval Gate | 人工审批闸门：物理停机等北冥显式 Y / Confirm；主权锚点，不可旁路 |
+
+**跳号说明**：M1（合同生成）与 M2（战时建制）是流程步骤，不具备自动裁决能力，不使用 Gate 编号。M4 不存在（S4 直接执行 M3 审计）。M7 不存在（S7 归档无需独立裁决闸门）。
+
+### 8.3 风险等级
+
+L = Risk Level：
+
+| 代号 | 正式名称 | 触发条件 |
+|------|---------|---------|
+| L0 | Risk Level 0: Read-Only | 单轮问答、搜索、总结、临时分析 |
+| L1 | Risk Level 1: Low-Risk Change | 小脚本、单文件非关键修改 |
+| L2 | Risk Level 2: Configuration Change | 配置修改、工具安装、跨会话任务 |
+| L3 | Risk Level 3: High-Risk Production | 删除/迁移、生产环境、主线收编、多 Agent 并行 |
+
+### 8.4 裁决术语
+
+M5 与 M6 输出的判定结果：
+
+| 术语 | 正式含义 |
+|------|---------|
+| APPROVE_CANDIDATE | 候选放行：M5 自愈后判定可进入 M6 |
+| REJECT_HARD | 硬拒绝：触发不可逾越的红线，自愈无法修复，直接打回 |
+| FAKE_WIN | 假通过：测试通过但控制流未真实对齐，等同于失败 |
+| WARN | 警告：未触发红线但有合规缺陷，需修正后重新进入验证 |
+
+### 8.5 战役代号命名规则
+
+格式：`<类型前缀>-<编号>`。以下为本系统内部项目代号，非行业通用缩写：
+
+| 前缀 | 全称 | 含义 |
+|------|------|------|
+| AR | Architecture Refactor Campaign | 架构重构战役（如 AR-1） |
+| TDB | Technical Debt Campaign | 技术债治理战役（如 TDB-3） |
+| PAC | Policy-as-Code Campaign | 策略即代码战役（如 PAC-CORE-001） |
+
+### 8.6 核心文档类型
+
+| 术语 | 职责 |
+|------|------|
+| Task Contract（任务合同） | 定义目标、范围、输入、交付物/证据、完成标准（5 字段模板） |
+| Status Ledger（状态台账） | 承接现场状态、证据登记与接管入口（4 字段模板） |
+| Verification Chain（验证链） | 证明合同是否满足（4 字段模板） |
+| Tech Debt Tracker（技术债账本） | 记录所有战役状态、优先级与当前阶段 |
